@@ -25,7 +25,9 @@ import {
   getAuth, 
   signInAnonymously, 
   onAuthStateChanged,
-  signInWithCustomToken
+  signInWithCustomToken,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -149,6 +151,15 @@ try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+  
+  // Enable authentication persistence
+  setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+      console.log("Firebase persistence enabled");
+    })
+    .catch((error) => {
+      console.error("Persistence error:", error);
+    });
 } catch (e) {
   console.warn("Firebase Init Error:", e);
 }
@@ -286,6 +297,20 @@ export default function EncryptX() {
     };
     initAuth();
     return onAuthStateChanged(auth, (user) => setFirebaseUser(user));
+  }, []);
+
+  // Restore app user from localStorage on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('encryptx_user');
+    if (savedUser && !appUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setAppUser(parsedUser);
+      } catch (e) {
+        console.error("Error restoring user:", e);
+        localStorage.removeItem('encryptx_user');
+      }
+    }
   }, []);
 
   // --- LOGIC: DATA LISTENERS ---
@@ -439,11 +464,18 @@ export default function EncryptX() {
                 blocked_users: [], status_msg: "Online", isOnline: true, created: serverTimestamp()
             };
             const ref = await addDoc(usersRef, newUser);
-            setAppUser({ id: ref.id, ...newUser });
+            const userWithId = { id: ref.id, ...newUser };
+            setAppUser(userWithId);
+            // Save to localStorage
+            localStorage.setItem('encryptx_user', JSON.stringify(userWithId));
         } else {
             const foundUser = users.find(u => u.username === authUsername && u.password === authPassword);
             if (!foundUser) setAuthError("Invalid credentials.");
-            else setAppUser(foundUser);
+            else {
+                setAppUser(foundUser);
+                // Save to localStorage
+                localStorage.setItem('encryptx_user', JSON.stringify(foundUser));
+            }
         }
     } catch (error) { setAuthError("Connection error."); }
   };
@@ -916,7 +948,7 @@ export default function EncryptX() {
         </div>
         <div className="p-4 border-t border-white/5 space-y-3">
             <button id="connect-btn" onClick={() => { triggerBlink('connect-btn'); setShowAddContact(true); }} className={`w-full py-3 rounded-xl border ${currentTheme.border} ${currentTheme.accent} flex items-center justify-center gap-2 hover:bg-white/5 transition-all font-bold tracking-widest text-xs uppercase ${getBlinkClass('connect-btn')}`}><Search className="w-4 h-4" /> Connect via ID</button>
-            <button onClick={() => setAppUser(null)} className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-transparent text-red-500/70 hover:bg-red-950/20 hover:text-red-400 transition-colors text-xs uppercase font-bold tracking-wider"><LogOut className="w-3 h-3" /> Terminate Session</button>
+            <button onClick={() => { setAppUser(null); localStorage.removeItem('encryptx_user'); }} className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-transparent text-red-500/70 hover:bg-red-950/20 hover:text-red-400 transition-colors text-xs uppercase font-bold tracking-wider"><LogOut className="w-3 h-3" /> Terminate Session</button>
         </div>
       </div>
 
